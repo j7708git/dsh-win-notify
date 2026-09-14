@@ -1,0 +1,11 @@
+{
+  "enabled": true,
+  "titleTemplate": "DSH 任務完成",
+  "bodyTemplate": "{title} 已完成，可以回去看結果了",
+  "sound": "default",
+  "launchUrl": "http://127.0.0.1:3080",
+  "notifyOnStart": true,
+  "cooldownMs": 5000,
+  "minRunningMs": 0,
+  "skipSubagentSessions": true
+}

@@ -1,0 +1,12 @@
+# dsh bundle patch — dsh-win-notify
+# `dsh plugin add` appends the package to the profile's `dsh.profile.bundles`,
+# and the composed tree then applies THIS patch file (declared as
+# `dsh.bundle.patch` in package.json): one loader row that inserts the plugin
+# into the profile's root entry list.
+#
+# win-notify publishes no service — it only consumes host capabilities
+# (subprocess, timer, fs, sessions, sessionTitle, agents) and listens to the
+# host-wide `api-session/status` event, so a plain root row is correct.
+- insert:
+    - id: dsh-win-notify
+      name: 'dsh-win-notify'
