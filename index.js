@@ -73,6 +73,13 @@ function xmlEscape(text) {
   })
 }
 
+function utf8Base64(text) {
+  const bytes = new TextEncoder().encode(text)
+  let binary = ''
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+  return btoa(binary)
+}
+
 function utf16LeBase64(text) {
   let binary = ''
   for (let i = 0; i < text.length; i++) {
@@ -152,10 +159,14 @@ export function apply(ctx, config = {}) {
     }
     // Single-quoted PowerShell string: xmlEscape already turned every ' into
     // &apos;, and LF-only here-strings are unusable under -EncodedCommand.
+    // The XML travels as UTF-8 base64 INSIDE an all-ASCII script; the script
+    // itself travels as UTF-16LE base64 whose bytes are all ASCII. No
+    // non-ASCII byte ever reaches btoa, so any btoa implementation
+    // (Latin-1 spec or UTF-8-text shim) produces correct bytes.
     const script = [
       '[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null',
       '[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null',
-      "$xml = '" + xml + "'",
+      "$xml = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('" + utf8Base64(xml) + "'))",
       '$doc = New-Object Windows.Data.Xml.Dom.XmlDocument',
       '$doc.LoadXml($xml)',
       '$toast = New-Object Windows.UI.Notifications.ToastNotification($doc)',
