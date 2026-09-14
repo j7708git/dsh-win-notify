@@ -9,13 +9,23 @@
 
 ## 運作原理
 
-1. 監聽 Host 事件 `api-session/status(sessionId, running)`。此事件由 DSH 內建的 `agent/status`（`'idle' | 'running'`）轉發，`running=false` 即代表該 session 的 agent 完成回合（任務結束）。
-2. 觸發時以 `subprocess.spawn` 呼叫 Windows PowerShell 5.1（`-EncodedCommand`，UTF-16LE base64），用 WinRT `Windows.UI.Notifications` 發出 Toast：
+v5 覆蓋三種「需要你回來」的時刻：
+
+1. **任務完成**：監聽 Host 事件 `api-session/status(sessionId, running)`（由 DSH 內建 `agent/status` 轉發），`running=false` 即該 session 的 agent 完成回合。已實測事件送達動態與 composition 監聽器。
+2. **需要核准**：監聽 `approval/request`（waterfall）——agent 卡在權限核准時**不會**轉閒置，這個掛鉤才是「我離開後 agent 卡住」場景的正解。Toast 內容含工具名稱。
+3. **等你回答**：監聽 `user-questions/request`（ask_user_question 提問時）。
+
+> ⚠️ 動態（façade）載入的實測限制：scoped 事件（approval／user-questions）**送不到**動態 plugin 的監聽器（沙箱 façade 不轉發 options、scope 過濾差異）；未 scope 的 `api-session/status` 則正常可達。**composition row（本 repo 的正式安裝方式）用真實 plugin 註冊＋`{global: true}`，重啟後三種事件都應可達**——若重啟後核准通知仍不出現，用 `win_notify_test` 的 `recentEvents` 環判讀（有事件沒 Toast＝渲染問題；沒事件＝送達問題）。
+
+發送方式：以 `subprocess.spawn` 呼叫 Windows PowerShell 5.1（`-EncodedCommand`）。**腳本本體純 ASCII，XML 內容以 UTF-8 base64 內嵌、由腳本解碼**——任何 btoa 實作（規範 Latin-1 或 UTF-8-text shim）下位元組皆正確，徹底排除中文內容導致的間歇性解析失敗。
+
+其他要點：
+
    - 音效：`ms-winsoundevent:Notification.Default`（系統預設通知音）；可設為靜音
    - 點擊行為：`activationType="protocol" launch=<launchUrl>`（預設開啟 http://127.0.0.1:3080）
-3. 去重：同一 session 在 `cooldownMs` 內只通知一次；可設定跳過子 agent（subagent）session；可設定最小執行時長 `minRunningMs`。
-4. 啟用時（`notifyOnStart`）發一則「已啟用」通知，作為端到端自檢。
-5. 註冊動態模型工具 `win_notify_test`：手動發一則測試通知並回傳診斷（exit code、stderr、生效設定）。
+   - 去重：任務完成每 session `cooldownMs` 冷卻；核准/提問通知每 session `attentionCooldownMs`（預設 3s）冷卻；可設定跳過子 agent session
+   - 啟動時（`notifyOnStart`）發一則「已啟用」通知作為端到端自檢
+   - 診斷：`win_notify_test` 回傳 spawn 結果、生效設定、**最近 40 筆事件環**（每個收到的 DSH 事件與每次 Toast 嘗試）、以及「呼叫者 session 是否會被過濾」
 
 ## 載入、啟用與移除
 
@@ -50,10 +60,12 @@
 | `enabled` | `true` | 總開關（false 時事件照收但不通知） |
 | `titleTemplate` | `DSH 任務完成` | 通知標題 |
 | `bodyTemplate` | `{title} 已完成，可以回去看結果了` | 內文模板，`{title}`/`{sessionId}` 會替換 |
+| `attentionTitle` | `DSH 需要你處理` | 核准/提問等待時的通知標題 |
 | `sound` | `default` | `default`＝系統提示音；`silent`＝靜音 |
 | `launchUrl` | `http://127.0.0.1:3080` | 點擊通知開啟的 URL；空字串則不設定 |
 | `notifyOnStart` | `true` | 啟用時發一則自檢通知 |
-| `cooldownMs` | `5000` | 同一 session 的去重冷卻（毫秒），保證單次通知 |
+| `cooldownMs` | `5000` | 同一 session 的完成通知去重冷卻（毫秒） |
+| `attentionCooldownMs` | `3000` | 同一 session 的核准/提問通知冷卻（毫秒） |
 | `minRunningMs` | `0` | 執行至少這麼久才通知（0＝每次完成都通知） |
 | `skipSubagentSessions` | `true` | 跳過子 agent session，只通知主 session |
 | `appId` | PowerShell AUMID | Toast 來源識別（進階） |
